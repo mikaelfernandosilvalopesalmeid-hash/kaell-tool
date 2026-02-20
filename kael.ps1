@@ -133,7 +133,7 @@ function GamerBoost {
 
     powercfg -setactive SCHEME_MIN
 
-    Stop-Service SysMain -ErrorAction SilencedContinue
+    Stop-Service SysMain -ErrorAction SilentlyContinue
 
     reg add "HKCU\System\GameConfigStore" /v GameDVR_Enabled /t REG_DWORD /d 0 /f
     reg add "HKCU\Software\Microsoft\GameBar" /v AllowAutoGameMode /t REG_DWORD /d 1 /f
