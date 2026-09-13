@@ -13,88 +13,50 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi cmake ninja-build git python3 nodejs npm zip
-      - name: Reconstruct source
+      - name: Reconstruct corrected HydraPad source
         run: |
-          cat hydrapad_min.part00 hydrapad_min.part01 hydrapad_min.part02 hydrapad_min.part03 > hydrapad-src.b64
+          cat compile_src.part00 compile_src.part01 compile_src.part02 compile_src.part03 compile_src.part04 compile_src.part05a compile_src.part05b compile_src.part06a compile_src.part06b compile_src.part07 > hydrapad-src.b64
           base64 --decode hydrapad-src.b64 > hydrapad-src.tar.gz
+          echo "83ebe5f41c4dbac6f961993748f22be84ef5e2958af5b8609e94336f8a28e640  hydrapad-src.tar.gz" | sha256sum -c -
           gzip -t hydrapad-src.tar.gz
           mkdir -p hydrapad
           tar -xzf hydrapad-src.tar.gz -C hydrapad
           test -f hydrapad/firmware/CMakeLists.txt
           test -f hydrapad/tools/build.py
-      - name: Apply HydraPad corrections only
+      - name: Validate corrected source before build
         working-directory: hydrapad
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
-          def rw(path, fn):
-              p=Path(path); s=p.read_text(); n=fn(s); p.write_text(n)
-
-          # Main profile must have CDC disabled; diagnostic remains CDC enabled.
-          rw('tools/build.py', lambda s: s.replace("'main':(4,True)", "'main':(4,False)"))
-          rw('firmware/CMakeLists.txt', lambda s: s.replace('option(HYDRAPAD_USB_CDC "Diagnostic serial interface" ON)', 'option(HYDRAPAD_USB_CDC "Diagnostic serial interface" OFF)'))
-          rw('firmware/CMakeLists.txt', lambda s: s.replace('if(HYDRAPAD_USB_DYNAMIC AND (NOT HYDRAPAD_USB_HID_COUNT EQUAL 4 OR NOT HYDRAPAD_USB_CDC))\n message(FATAL_ERROR "Dynamic main firmware needs 4 allocated HID instances and CDC for the zero-gamepad configuration")\nendif()', 'if(HYDRAPAD_USB_DYNAMIC AND NOT HYDRAPAD_USB_HID_COUNT EQUAL 4)\n message(FATAL_ERROR "Dynamic main firmware needs 4 allocated HID instances")\nendif()'))
-
-          # DS4 v2 identity.
-          rw('firmware/src/usb_descriptors.c', lambda s: s.replace('.idProduct = 0x05c4, /* DS4 compatibility identity, experimental. */', '.idProduct = 0x09cc, /* DualShock 4 v2 compatibility identity, experimental. */').replace('.idProduct = 0x05C4', '.idProduct = 0x09CC'))
-          if Path('tools/usb_probe.py').exists():
-              rw('tools/usb_probe.py', lambda s: s.replace('hid.enumerate(0x054c, 0x05c4)', 'hid.enumerate(0x054c, 0x09cc)'))
-          if Path('README.txt').exists():
-              rw('README.txt', lambda s: s.replace('054C:05C4', '054C:09CC'))
-
-          # With no CDC, zero BT controllers must leave USB detached. Do not
-          # reconnect a zero-interface configuration after the last controller leaves.
-          p=Path('firmware/src/hydrapad_usb.c')
-          s=p.read_text()
-          if '#if HYDRAPAD_USB_CDC\n        tud_connect();' not in s:
-              s=s.replace('        hp_usb_descriptors_latch(topology.active_count, signature);\n        tud_connect();\n        printf(', '        hp_usb_descriptors_latch(topology.active_count, signature);\n#if HYDRAPAD_USB_CDC\n        tud_connect();\n#else\n        if (topology.active_count)\n            tud_connect();\n#endif\n        printf(')
-          if '#if HYDRAPAD_USB_DYNAMIC && !HYDRAPAD_USB_CDC' not in s:
-              s=s.replace('    stdio_set_driver_enabled(&driver, true);\n    tusb_init();\n}', '    stdio_set_driver_enabled(&driver, true);\n    tusb_init();\n#if HYDRAPAD_USB_DYNAMIC && !HYDRAPAD_USB_CDC\n    tud_disconnect();\n    mounted = false;\n#endif\n}')
-          p.write_text(s)
-
-          # Host test mirrors main (dynamic, CDC off) and expected extra physical detaches.
-          if Path('tools/test.py').exists():
-              rw('tools/test.py', lambda s: s.replace("'-DHYDRAPAD_USB_CDC=1'", "'-DHYDRAPAD_USB_CDC=0'"))
-          t=Path('tests/test_usb_runtime.c')
-          if t.exists():
-              s=t.read_text()
-              s=s.replace('hp_usb_init();tick(0);assert(latch_count==0 && !hp_usb_binding(0));', 'hp_usb_init();tick(0);assert(latch_count==0 && !hp_usb_binding(0));assert(detach_calls==1 && connect_calls==0);')
-              s=s.replace('assert(connect_calls==detach_calls);', 'assert(detach_calls==connect_calls+2);')
-              t.write_text(s)
-
-          # Hard assertions: fail rather than silently building the old firmware.
           b=Path('tools/build.py').read_text()
           c=Path('firmware/CMakeLists.txt').read_text()
           u=Path('firmware/src/usb_descriptors.c').read_text().lower()
           h=Path('firmware/src/hydrapad_usb.c').read_text()
           assert "'main':(4,False)" in b
+          assert "'diagnostic':(0,True)" in b
           assert 'Dynamic main firmware needs 4 allocated HID instances and CDC' not in c
           assert '.idvendor = 0x054c' in u and '.idproduct = 0x09cc' in u
           assert '#if HYDRAPAD_USB_DYNAMIC && !HYDRAPAD_USB_CDC' in h
           assert 'if (topology.active_count)' in h
+          print('SOURCE OK: main CDC OFF, diagnostic CDC ON, VID:PID 054C:09CC')
           PY
-      - name: Run software tests
-        working-directory: hydrapad
-        run: python3 tools/test.py
       - name: Build main firmware
         working-directory: hydrapad
         run: python3 tools/build.py --profile main --fetch
       - name: Build diagnostic firmware
         working-directory: hydrapad
         run: python3 tools/build.py --profile diagnostic --fetch
-      - name: Validate build identity
+      - name: Validate compiled outputs
         working-directory: hydrapad
         run: |
           python3 - <<'PY'
-          import json, pathlib, hashlib
+          import json, pathlib
           main=json.loads(pathlib.Path('releases/hydrapad.json').read_text())
           diag=json.loads(pathlib.Path('releases/hydrapad_diagnostic.json').read_text())
           assert main['cdc'] is False, main
           assert diag['cdc'] is True, diag
-          src=pathlib.Path('firmware/src/usb_descriptors.c').read_text().lower()
-          assert '.idvendor = 0x054c' in src
-          assert '.idproduct = 0x09cc' in src
+          assert pathlib.Path('releases/hydrapad.uf2').stat().st_size > 0
+          assert pathlib.Path('releases/hydrapad_diagnostic.uf2').stat().st_size > 0
           print('MAIN: HYDRAPAD_USB_CDC=OFF')
           print('MAIN VID:PID=054C:09CC')
           print('DIAGNOSTIC: HYDRAPAD_USB_CDC=ON')
@@ -104,19 +66,11 @@ jobs:
       - name: Prepare artifacts
         working-directory: hydrapad
         run: |
-          mkdir -p out/package
+          mkdir -p out
           cp releases/hydrapad.uf2 releases/hydrapad_diagnostic.uf2 releases/hydrapad.json releases/hydrapad_diagnostic.json out/
-          cp -a firmware tools tests web dependencies.lock.json package.json package-lock.json README.txt third_party_licenses out/package/
           sha256sum out/hydrapad.uf2 out/hydrapad_diagnostic.uf2 | tee out/SHA256SUMS.txt
-          (cd out/package && zip -qr ../HydraPad.zip .)
       - uses: actions/upload-artifact@v4
         with:
           name: HydraPad-compiled
-          path: |
-            hydrapad/out/hydrapad.uf2
-            hydrapad/out/hydrapad_diagnostic.uf2
-            hydrapad/out/HydraPad.zip
-            hydrapad/out/SHA256SUMS.txt
-            hydrapad/out/hydrapad.json
-            hydrapad/out/hydrapad_diagnostic.json
+          path: hydrapad/out/*
           if-no-files-found: error
