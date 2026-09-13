@@ -1,0 +1,61 @@
+name: hydrapad-build
+
+on:
+  push:
+    branches: [hydrapad-build-temp-20260912]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi cmake ninja-build git python3 nodejs npm zip
+      - name: Reconstruct corrected source
+        run: |
+          cat hydrapad_src.part* | base64 -d > hydrapad-src.tar.gz
+          mkdir hydrapad
+          tar -xzf hydrapad-src.tar.gz -C hydrapad
+      - name: Software tests
+        working-directory: hydrapad
+        run: python3 tools/test.py
+      - name: Build main firmware
+        working-directory: hydrapad
+        run: python3 tools/build.py --profile main --fetch
+      - name: Build diagnostic firmware
+        working-directory: hydrapad
+        run: python3 tools/build.py --profile diagnostic --fetch
+      - name: Validate build identity
+        working-directory: hydrapad
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          main=json.loads(pathlib.Path('releases/hydrapad.json').read_text())
+          diag=json.loads(pathlib.Path('releases/hydrapad_diagnostic.json').read_text())
+          assert main['cdc'] is False, main
+          assert diag['cdc'] is True, diag
+          src=pathlib.Path('firmware/src/usb_descriptors.c').read_text().lower()
+          assert '.idvendor = 0x054c' in src
+          assert '.idproduct = 0x09cc' in src
+          print('MAIN CDC=OFF')
+          print('MAIN VID:PID=054C:09CC')
+          print('DIAGNOSTIC CDC=ON')
+          print('MAIN SHA256='+main['sha256'])
+          print('DIAGNOSTIC SHA256='+diag['sha256'])
+          PY
+      - name: Package final files
+        working-directory: hydrapad
+        run: |
+          rm -rf build .deps
+          find . -name '*.md' -delete
+          zip -qr HydraPad.zip . -x 'HydraPad.zip'
+          mkdir -p out
+          cp HydraPad.zip releases/hydrapad.uf2 releases/hydrapad_diagnostic.uf2 releases/hydrapad.json releases/hydrapad_diagnostic.json out/
+          sha256sum out/hydrapad.uf2 out/hydrapad_diagnostic.uf2 | tee out/SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HydraPad-final
+          path: hydrapad/out/*
+          if-no-files-found: error
