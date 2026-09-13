@@ -3,6 +3,8 @@ name: hydrapad-build
 on:
   push:
     branches: [hydrapad-build-temp-20260912]
+  pull_request:
+    branches: [main]
 
 jobs:
   build:
