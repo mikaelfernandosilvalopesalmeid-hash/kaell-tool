@@ -1,0 +1,51 @@
+name: HydraPad build
+
+on:
+  push:
+    paths:
+      - '.buildpayload/**'
+      - '.github/workflows/hydrapad-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [main, diagnostic]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore HydraPad source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p src
+          cat .buildpayload/c.* | base64 -d > /tmp/hydrapad_build.tar.gz
+          echo '6ec128403901b3a7f1f2e32698bcd7c113d5dc4d24cf43bd38d55596b9cc4bd0  /tmp/hydrapad_build.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/hydrapad_build.tar.gz -C src
+          cp .buildpayload/bin2uf2.py src/tools/bin2uf2.py
+          test -f src/firmware/src/usb_descriptors.c
+          grep -Fq '0x09cc' src/firmware/src/usb_descriptors.c
+          grep -Fq "'main':(4,False)" src/tools/build.py
+      - name: Install Arm build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+      - name: Build firmware
+        working-directory: src
+        run: python3 tools/build.py --profile ${{ matrix.profile }} --fetch
+      - name: List release outputs
+        working-directory: src
+        run: |
+          ls -lh releases
+          sha256sum releases/*.uf2
+          cat releases/*.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hydrapad-${{ matrix.profile }}
+          path: src/releases/*
+          if-no-files-found: error
