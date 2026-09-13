@@ -1,0 +1,76 @@
+name: hydrapad-build
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi cmake ninja-build git python3 nodejs npm zip
+      - name: Reconstruct corrected HydraPad source
+        run: |
+          cat compile_src.part00 compile_src.p1_0 compile_src.p1_1 compile_src.p1_2 compile_src.p1_3 compile_src.p1_4 compile_src.p1_5 compile_src.p1_6 compile_src.p1_7 compile_src.p2_0 compile_src.p2_1 compile_src.p2_2 compile_src.p2_3 compile_src.p2_4x0 compile_src.p2_4x1 compile_src.p2_4x2 compile_src.p2_4x3 compile_src.p2_5 compile_src.p2_6 compile_src.p2_7 compile_src.part03 compile_src.part04 compile_src.p5a_0 compile_src.p5a_1 compile_src.p5a_2x0 compile_src.p5a_2x1 compile_src.p5a_2x2 compile_src.p5a_2x3 compile_src.p5a_3 compile_src.part05b compile_src.part06a compile_src.part06b compile_src.part07 > hydrapad-src.b64
+          base64 --decode hydrapad-src.b64 > hydrapad-src.tar.gz
+          echo "83ebe5f41c4dbac6f961993748f22be84ef5e2958af5b8609e94336f8a28e640  hydrapad-src.tar.gz" | sha256sum -c -
+          gzip -t hydrapad-src.tar.gz
+          mkdir -p hydrapad
+          tar -xzf hydrapad-src.tar.gz -C hydrapad
+          test -f hydrapad/firmware/CMakeLists.txt
+          test -f hydrapad/tools/build.py
+      - name: Validate corrected source before build
+        working-directory: hydrapad
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          b=Path('tools/build.py').read_text()
+          c=Path('firmware/CMakeLists.txt').read_text()
+          u=Path('firmware/src/usb_descriptors.c').read_text().lower()
+          h=Path('firmware/src/hydrapad_usb.c').read_text()
+          assert "'main':(4,False)" in b
+          assert "'diagnostic':(0,True)" in b
+          assert 'Dynamic main firmware needs 4 allocated HID instances and CDC' not in c
+          assert '.idvendor = 0x054c' in u and '.idproduct = 0x09cc' in u
+          assert '#if HYDRAPAD_USB_DYNAMIC && !HYDRAPAD_USB_CDC' in h
+          assert 'if (topology.active_count)' in h
+          print('SOURCE OK: main CDC OFF, diagnostic CDC ON, VID:PID 054C:09CC')
+          PY
+      - name: Build main firmware
+        working-directory: hydrapad
+        run: python3 tools/build.py --profile main --fetch
+      - name: Build diagnostic firmware
+        working-directory: hydrapad
+        run: python3 tools/build.py --profile diagnostic --fetch
+      - name: Validate compiled outputs
+        working-directory: hydrapad
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          main=json.loads(pathlib.Path('releases/hydrapad.json').read_text())
+          diag=json.loads(pathlib.Path('releases/hydrapad_diagnostic.json').read_text())
+          assert main['cdc'] is False, main
+          assert diag['cdc'] is True, diag
+          assert pathlib.Path('releases/hydrapad.uf2').stat().st_size > 0
+          assert pathlib.Path('releases/hydrapad_diagnostic.uf2').stat().st_size > 0
+          print('MAIN: HYDRAPAD_USB_CDC=OFF')
+          print('MAIN VID:PID=054C:09CC')
+          print('DIAGNOSTIC: HYDRAPAD_USB_CDC=ON')
+          print('MAIN SHA256='+main['sha256'])
+          print('DIAGNOSTIC SHA256='+diag['sha256'])
+          PY
+      - name: Prepare artifacts
+        working-directory: hydrapad
+        run: |
+          mkdir -p out
+          cp releases/hydrapad.uf2 releases/hydrapad_diagnostic.uf2 releases/hydrapad.json releases/hydrapad_diagnostic.json out/
+          sha256sum out/hydrapad.uf2 out/hydrapad_diagnostic.uf2 | tee out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HydraPad-compiled
+          path: hydrapad/out/*
+          if-no-files-found: error
