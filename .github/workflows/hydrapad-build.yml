@@ -31,6 +31,14 @@ jobs:
           test -f src/firmware/src/usb_descriptors.c
           grep -Fq '0x09cc' src/firmware/src/usb_descriptors.c
           grep -Fq "'main':(4,False)" src/tools/build.py
+      - name: Inspect Wi-Fi and web source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "=== source files ==="
+          find src -maxdepth 4 -type f | sort
+          echo "=== wifi/web matches ==="
+          grep -RniE '192\.168\.4\.1|enable_ap_mode|cyw43|http|HydraPad' src/firmware src/tools || true
       - name: Install Arm build dependencies
         run: |
           sudo apt-get update
