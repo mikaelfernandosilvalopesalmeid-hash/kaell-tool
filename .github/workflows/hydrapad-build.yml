@@ -31,14 +31,29 @@ jobs:
           test -f src/firmware/src/usb_descriptors.c
           grep -Fq '0x09cc' src/firmware/src/usb_descriptors.c
           grep -Fq "'main':(4,False)" src/tools/build.py
-      - name: Inspect Wi-Fi and web source
+      - name: Dump Wi-Fi source for patching
+        if: matrix.profile == 'main'
         shell: bash
         run: |
           set -euxo pipefail
-          echo "=== source files ==="
-          find src -maxdepth 4 -type f | sort
-          echo "=== wifi/web matches ==="
-          grep -RniE '192\.168\.4\.1|enable_ap_mode|cyw43|http|HydraPad' src/firmware src/tools || true
+          for f in \
+            src/firmware/src/hydrapad_web.c \
+            src/firmware/src/hydrapad_web.h \
+            src/firmware/src/hydrapad_storage.c \
+            src/firmware/src/hydrapad_profile.h \
+            src/firmware/src/hydrapad_profile.c \
+            src/firmware/src/main.c \
+            src/firmware/src/lwipopts.h \
+            src/firmware/CMakeLists.txt \
+            src/firmware/flash_guard.ld \
+            src/web/index.html \
+            src/web/app.mjs \
+            src/web/protocol.mjs \
+            src/web/style.css; do
+            echo "===== BEGIN $f ====="
+            cat "$f"
+            echo "===== END $f ====="
+          done
       - name: Install Arm build dependencies
         run: |
           sudo apt-get update
