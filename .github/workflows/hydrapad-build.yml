@@ -11,6 +11,26 @@ permissions:
   contents: read
 
 jobs:
+  source:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore HydraPad source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p src
+          cat .buildpayload/c.* | base64 -d > /tmp/hydrapad_build.tar.gz
+          echo '6ec128403901b3a7f1f2e32698bcd7c113d5dc4d24cf43bd38d55596b9cc4bd0  /tmp/hydrapad_build.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/hydrapad_build.tar.gz -C src
+          cp .buildpayload/bin2uf2.py src/tools/bin2uf2.py
+          tar -czf hydrapad-source.tar.gz -C src firmware web tools dependencies.lock.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hydrapad-source
+          path: hydrapad-source.tar.gz
+          if-no-files-found: error
+
   firmware:
     runs-on: ubuntu-22.04
     strategy:
@@ -31,29 +51,6 @@ jobs:
           test -f src/firmware/src/usb_descriptors.c
           grep -Fq '0x09cc' src/firmware/src/usb_descriptors.c
           grep -Fq "'main':(4,False)" src/tools/build.py
-      - name: Dump Wi-Fi source for patching
-        if: matrix.profile == 'main'
-        shell: bash
-        run: |
-          set -euxo pipefail
-          for f in \
-            src/firmware/src/hydrapad_web.c \
-            src/firmware/src/hydrapad_web.h \
-            src/firmware/src/hydrapad_storage.c \
-            src/firmware/src/hydrapad_profile.h \
-            src/firmware/src/hydrapad_profile.c \
-            src/firmware/src/main.c \
-            src/firmware/src/lwipopts.h \
-            src/firmware/CMakeLists.txt \
-            src/firmware/flash_guard.ld \
-            src/web/index.html \
-            src/web/app.mjs \
-            src/web/protocol.mjs \
-            src/web/style.css; do
-            echo "===== BEGIN $f ====="
-            cat "$f"
-            echo "===== END $f ====="
-          done
       - name: Install Arm build dependencies
         run: |
           sudo apt-get update
