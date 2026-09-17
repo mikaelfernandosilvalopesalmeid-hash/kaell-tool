@@ -24,7 +24,19 @@ jobs:
           echo '6ec128403901b3a7f1f2e32698bcd7c113d5dc4d24cf43bd38d55596b9cc4bd0  /tmp/hydrapad_build.tar.gz' | sha256sum -c -
           tar -xzf /tmp/hydrapad_build.tar.gz -C src
           cp .buildpayload/bin2uf2.py src/tools/bin2uf2.py
-          tar -czf hydrapad-source.tar.gz -C src .
+      - name: Apply Wi-Fi STA patch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat .buildpayload/wifi_patch.* | base64 -d > /tmp/hydrapad_wifi.patch.gz
+          echo '007e9dd34708fe4aed8fbc7ae380132fa44fd8c8749267513226fc16c24db4b9  /tmp/hydrapad_wifi.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/hydrapad_wifi.patch.gz > /tmp/hydrapad_wifi.patch
+          (cd src && patch -p1 < /tmp/hydrapad_wifi.patch)
+          grep -Fq 'pico_lwip_mdns' src/firmware/CMakeLists.txt
+          grep -Fq '"/api/wifi"' src/firmware/src/hydrapad_web.c
+          grep -Fq 'hydrapad.local' src/firmware/src/hydrapad_web.c
+      - name: Export patched source
+        run: tar -czf hydrapad-source.tar.gz -C src .
       - uses: actions/upload-artifact@v4
         with:
           name: hydrapad-source
@@ -51,6 +63,17 @@ jobs:
           test -f src/firmware/src/usb_descriptors.c
           grep -Fq '0x09cc' src/firmware/src/usb_descriptors.c
           grep -Fq "'main':(4,False)" src/tools/build.py
+      - name: Apply Wi-Fi STA patch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat .buildpayload/wifi_patch.* | base64 -d > /tmp/hydrapad_wifi.patch.gz
+          echo '007e9dd34708fe4aed8fbc7ae380132fa44fd8c8749267513226fc16c24db4b9  /tmp/hydrapad_wifi.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/hydrapad_wifi.patch.gz > /tmp/hydrapad_wifi.patch
+          (cd src && patch -p1 < /tmp/hydrapad_wifi.patch)
+          grep -Fq 'pico_lwip_mdns' src/firmware/CMakeLists.txt
+          grep -Fq '"/api/wifi"' src/firmware/src/hydrapad_web.c
+          grep -Fq 'hydrapad.local' src/firmware/src/hydrapad_web.c
       - name: Install Arm build dependencies
         run: |
           sudo apt-get update
