@@ -32,6 +32,18 @@ jobs:
           echo '007e9dd34708fe4aed8fbc7ae380132fa44fd8c8749267513226fc16c24db4b9  /tmp/hydrapad_wifi.patch.gz' | sha256sum -c -
           gzip -dc /tmp/hydrapad_wifi.patch.gz > /tmp/hydrapad_wifi.patch
           (cd src && patch -p1 < /tmp/hydrapad_wifi.patch)
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("src/firmware/src/hydrapad_web.c")
+          s=p.read_text()
+          s=s.replace("if(got_ssid || !form_decode(body+eq+1,end-eq-1,ssid,33))return false;got_ssid=true;",
+                      "if(got_ssid || !form_decode(body+eq+1,end-eq-1,ssid,33)) return false;\n            got_ssid=true;")
+          s=s.replace("if(got_password || !form_decode(body+eq+1,end-eq-1,password,64))return false;got_password=true;",
+                      "if(got_password || !form_decode(body+eq+1,end-eq-1,password,64)) return false;\n            got_password=true;")
+          s=s.replace("if(now-last_network_tick<250000)return;last_network_tick=now;",
+                      "if(now-last_network_tick<250000) return;\n    last_network_tick=now;")
+          p.write_text(s)
+          PY
           grep -Fq 'pico_lwip_mdns' src/firmware/CMakeLists.txt
           grep -Fq '"/api/wifi"' src/firmware/src/hydrapad_web.c
           grep -Fq 'hydrapad.local' src/firmware/src/hydrapad_web.c
@@ -71,6 +83,18 @@ jobs:
           echo '007e9dd34708fe4aed8fbc7ae380132fa44fd8c8749267513226fc16c24db4b9  /tmp/hydrapad_wifi.patch.gz' | sha256sum -c -
           gzip -dc /tmp/hydrapad_wifi.patch.gz > /tmp/hydrapad_wifi.patch
           (cd src && patch -p1 < /tmp/hydrapad_wifi.patch)
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("src/firmware/src/hydrapad_web.c")
+          s=p.read_text()
+          s=s.replace("if(got_ssid || !form_decode(body+eq+1,end-eq-1,ssid,33))return false;got_ssid=true;",
+                      "if(got_ssid || !form_decode(body+eq+1,end-eq-1,ssid,33)) return false;\n            got_ssid=true;")
+          s=s.replace("if(got_password || !form_decode(body+eq+1,end-eq-1,password,64))return false;got_password=true;",
+                      "if(got_password || !form_decode(body+eq+1,end-eq-1,password,64)) return false;\n            got_password=true;")
+          s=s.replace("if(now-last_network_tick<250000)return;last_network_tick=now;",
+                      "if(now-last_network_tick<250000) return;\n    last_network_tick=now;")
+          p.write_text(s)
+          PY
           grep -Fq 'pico_lwip_mdns' src/firmware/CMakeLists.txt
           grep -Fq '"/api/wifi"' src/firmware/src/hydrapad_web.c
           grep -Fq 'hydrapad.local' src/firmware/src/hydrapad_web.c
