@@ -48,3 +48,5 @@ jobs:
           fi
           git commit -m 'Publish PromoNexus site'
           git push origin HEAD:main
+
+# retry after payload repair
