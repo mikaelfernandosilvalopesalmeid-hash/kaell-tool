@@ -1,0 +1,47 @@
+name: Publish PromoNexus
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/promonexus-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rebuild site package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .promonexus_payload/part-*.txt > /tmp/promonexus.b64
+          base64 -d /tmp/promonexus.b64 > /tmp/promonexus.zip
+          rm -rf promonexus
+          mkdir -p promonexus
+          unzip -q /tmp/promonexus.zip -d promonexus
+          SITE_URL='https://mikaelfernandosilvalopesalmeid-hash.github.io/kaell-tool/promonexus'
+          sed -i "s|BASE_URL|${SITE_URL}|g" promonexus/robots.txt promonexus/sitemap.xml
+
+      - name: Commit published site
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -rf .promonexus_payload
+          git add -A promonexus .promonexus_payload
+          if git diff --cached --quiet; then
+            echo 'No changes to publish.'
+            exit 0
+          fi
+          git commit -m 'Publish PromoNexus site'
+          git push origin HEAD:main
