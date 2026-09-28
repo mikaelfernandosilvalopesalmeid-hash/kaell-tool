@@ -23,8 +23,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .promonexus_payload/part-*.txt > /tmp/promonexus.b64
+          wc -c .promonexus_payload/part-*.txt
+          cat .promonexus_payload/part-*.txt | tr -d '\r\n\t ' > /tmp/promonexus.b64
+          wc -c /tmp/promonexus.b64
           base64 -d /tmp/promonexus.b64 > /tmp/promonexus.zip
+          unzip -t /tmp/promonexus.zip
           rm -rf promonexus
           mkdir -p promonexus
           unzip -q /tmp/promonexus.zip -d promonexus
