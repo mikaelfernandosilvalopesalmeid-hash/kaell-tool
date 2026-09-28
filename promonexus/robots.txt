@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+# Atualize a linha abaixo depois do deploy
+Sitemap: https://mikaelfernandosilvalopesalmeid-hash.github.io/kaell-tool/promonexus/sitemap.xml
